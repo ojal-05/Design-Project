@@ -1,0 +1,6 @@
+{
+  "name": "Immersive Response Intelligence",
+  "description": "Immersive 3D healthcare emergency training, simulation, and performance intelligence platform for CPR/AED resuscitation, multi-patient triage, analytics, and evidence-based debriefing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

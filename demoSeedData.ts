@@ -1,0 +1,1572 @@
+import {
+  calculateSessionAssessment,
+  generateRuleBasedDebrief,
+} from '../engine/assessmentEngine.ts';
+import type {
+  ActionEventRecord,
+  InstructorNote,
+  PatientState,
+  PlatformSettings,
+  ScenarioDefinition,
+  TrainingSession,
+  UserAccount,
+  VitalTimelinePoint,
+} from '../types/simulation.ts';
+
+export const DEMO_USERS: UserAccount[] = [
+  {
+    id: 'usr_trainee_1',
+    name: 'Dr. Maya Lin',
+    email: 'maya.lin@demo.iri-training.edu',
+    role: 'trainee',
+    cohort: 'PGY-1 Emergency Medicine',
+    department: 'Acute Resuscitation Unit',
+    assignedScenarioIds: ['scen_cardiac_01', 'scen_triage_01', 'scen_cardiac_02'],
+    active: true,
+    isDemo: true,
+    createdAt: '2026-09-10T08:00:00Z',
+  },
+  {
+    id: 'usr_trainee_2',
+    name: 'Jordan Vance',
+    email: 'jordan.vance@demo.iri-training.edu',
+    role: 'trainee',
+    cohort: 'Paramedic Specialist Cohort B',
+    department: 'Pre-Hospital & Trauma Triage',
+    assignedScenarioIds: ['scen_cardiac_01', 'scen_triage_01', 'scen_triage_02'],
+    active: true,
+    isDemo: true,
+    createdAt: '2026-09-11T09:15:00Z',
+  },
+  {
+    id: 'usr_trainee_3',
+    name: 'Samira Patel',
+    email: 'samira.patel@demo.iri-training.edu',
+    role: 'trainee',
+    cohort: 'Critical Care Nursing Year 4',
+    department: 'Emergency Observation Bay',
+    assignedScenarioIds: ['scen_cardiac_01', 'scen_triage_01'],
+    active: true,
+    isDemo: true,
+    createdAt: '2026-09-12T10:30:00Z',
+  },
+  {
+    id: 'usr_trainee_4',
+    name: "Liam O'Connor",
+    email: 'liam.oconnor@demo.iri-training.edu',
+    role: 'trainee',
+    cohort: 'PGY-1 Emergency Medicine',
+    department: 'Acute Resuscitation Unit',
+    assignedScenarioIds: ['scen_cardiac_01', 'scen_triage_01', 'scen_cardiac_02'],
+    active: true,
+    isDemo: true,
+    createdAt: '2026-09-14T11:00:00Z',
+  },
+  {
+    id: 'usr_trainee_5',
+    name: 'Chloe Takahashi',
+    email: 'chloe.takahashi@demo.iri-training.edu',
+    role: 'trainee',
+    cohort: 'Paramedic Specialist Cohort B',
+    department: 'Pre-Hospital & Trauma Triage',
+    assignedScenarioIds: ['scen_cardiac_01', 'scen_triage_01', 'scen_triage_02'],
+    active: true,
+    isDemo: true,
+    createdAt: '2026-09-15T14:20:00Z',
+  },
+  {
+    id: 'usr_instructor_1',
+    name: 'Prof. Evelyn Sterling',
+    email: 'e.sterling@demo.iri-training.edu',
+    role: 'instructor',
+    cohort: 'Faculty Simulation Directorate',
+    department: 'Clinical Simulation & Assessment',
+    assignedScenarioIds: [],
+    active: true,
+    isDemo: true,
+    createdAt: '2026-08-01T08:00:00Z',
+  },
+  {
+    id: 'usr_admin_1',
+    name: 'Marcus Thorne',
+    email: 'm.thorne@demo.iri-training.edu',
+    role: 'administrator',
+    cohort: 'Platform Systems Governance',
+    department: 'Simulation Operations & XR Infrastructure',
+    assignedScenarioIds: [],
+    active: true,
+    isDemo: true,
+    createdAt: '2026-08-01T08:00:00Z',
+  },
+];
+
+function createCardiacPatient(): PatientState {
+  return {
+    patientId: 'PT-101',
+    bayNumber: 1,
+    name: 'Arthur Vance (Simulated)',
+    age: 58,
+    sex: 'M',
+    presentation: 'Sudden witnessed collapse in Emergency Observation Bay; unresponsive and apneic',
+    mechanismSummary: 'Simulated acute ventricular fibrillation cardiac arrest',
+    heartRate: 0,
+    systolicBP: 0,
+    diastolicBP: 0,
+    respiratoryRate: 0,
+    spo2: 76,
+    consciousness: 'Unresponsive',
+    painLevel: 0,
+    bleedingSeverity: 'None',
+    cardiacRhythm: 'VFib',
+    conditionStatus: 'Arrest',
+    sceneChecked: false,
+    examined: false,
+    airwayClear: false,
+    cprActive: false,
+    cprCyclesCompleted: 0,
+    aedPoweredOn: false,
+    padsAttached: false,
+    rhythmAnalyzed: false,
+    shockAdvised: false,
+    shocksDelivered: 0,
+    oxygenApplied: false,
+    bleedingControlled: true,
+    woundDressed: false,
+    monitorVerified: false,
+    assignedTriage: null,
+    referenceTriage: 'IMMEDIATE',
+    triageRationale: 'Educational Rule: Pulseless cardiac arrest requires immediate resuscitation.',
+    isSimulated: true,
+  };
+}
+
+function createTriagePatients(): PatientState[] {
+  return [
+    {
+      patientId: 'PT-201',
+      bayNumber: 1,
+      name: 'Elena Rostova (Simulated)',
+      age: 34,
+      sex: 'F',
+      presentation: 'Pulsatile right lower-limb hemorrhage after industrial glass impact; pale, diaphoretic',
+      mechanismSummary: 'High-pressure workshop glass shatter',
+      heartRate: 134,
+      systolicBP: 82,
+      diastolicBP: 50,
+      respiratoryRate: 32,
+      spo2: 88,
+      consciousness: 'Voice',
+      painLevel: 9,
+      bleedingSeverity: 'Severe',
+      cardiacRhythm: 'Sinus Tachycardia',
+      conditionStatus: 'Critical',
+      sceneChecked: true,
+      examined: false,
+      airwayClear: true,
+      cprActive: false,
+      cprCyclesCompleted: 0,
+      aedPoweredOn: false,
+      padsAttached: false,
+      rhythmAnalyzed: false,
+      shockAdvised: false,
+      shocksDelivered: 0,
+      oxygenApplied: false,
+      bleedingControlled: false,
+      woundDressed: false,
+      monitorVerified: false,
+      assignedTriage: null,
+      referenceTriage: 'IMMEDIATE',
+      triageRationale:
+        'Educational Rule: Uncontrolled severe hemorrhage with hypotension (SBP < 90) and RR > 30 mandates IMMEDIATE (Red) priority and hemorrhage control.',
+      isSimulated: true,
+    },
+    {
+      patientId: 'PT-202',
+      bayNumber: 2,
+      name: 'Marcus Chen (Simulated)',
+      age: 46,
+      sex: 'M',
+      presentation: 'Positional upper airway partial obstruction & severe hypoxia following concussive blast',
+      mechanismSummary: 'Blunt chest/neck concussive force near storage bay',
+      heartRate: 124,
+      systolicBP: 96,
+      diastolicBP: 62,
+      respiratoryRate: 34,
+      spo2: 81,
+      consciousness: 'Pain',
+      painLevel: 7,
+      bleedingSeverity: 'None',
+      cardiacRhythm: 'Sinus Tachycardia',
+      conditionStatus: 'Critical',
+      sceneChecked: true,
+      examined: false,
+      airwayClear: false,
+      cprActive: false,
+      cprCyclesCompleted: 0,
+      aedPoweredOn: false,
+      padsAttached: false,
+      rhythmAnalyzed: false,
+      shockAdvised: false,
+      shocksDelivered: 0,
+      oxygenApplied: false,
+      bleedingControlled: true,
+      woundDressed: false,
+      monitorVerified: false,
+      assignedTriage: null,
+      referenceTriage: 'IMMEDIATE',
+      triageRationale:
+        'Educational Rule: Compromised airway, Pain-only responsiveness, and SpO2 81% requires airway manoeuvre, supplemental oxygen, and IMMEDIATE (Red) priority.',
+      isSimulated: true,
+    },
+    {
+      patientId: 'PT-203',
+      bayNumber: 3,
+      name: 'David Miller (Simulated)',
+      age: 29,
+      sex: 'M',
+      presentation: 'Closed left ankle fracture & moderate forearm laceration; non-ambulatory but hemodynamically stable',
+      mechanismSummary: 'Fall from loading platform (1.8m)',
+      heartRate: 92,
+      systolicBP: 124,
+      diastolicBP: 78,
+      respiratoryRate: 18,
+      spo2: 98,
+      consciousness: 'Alert',
+      painLevel: 6,
+      bleedingSeverity: 'Mild',
+      cardiacRhythm: 'Normal Sinus',
+      conditionStatus: 'Stable',
+      sceneChecked: true,
+      examined: false,
+      airwayClear: true,
+      cprActive: false,
+      cprCyclesCompleted: 0,
+      aedPoweredOn: false,
+      padsAttached: false,
+      rhythmAnalyzed: false,
+      shockAdvised: false,
+      shocksDelivered: 0,
+      oxygenApplied: false,
+      bleedingControlled: false,
+      woundDressed: false,
+      monitorVerified: false,
+      assignedTriage: null,
+      referenceTriage: 'DELAYED',
+      triageRationale:
+        'Educational Rule: Non-ambulatory fracture patient with stable airway, RR 18, SpO2 98%, and controlled perfusion classifies as DELAYED (Yellow).',
+      isSimulated: true,
+    },
+    {
+      patientId: 'PT-204',
+      bayNumber: 4,
+      name: 'Sarah Jenkins (Simulated)',
+      age: 22,
+      sex: 'F',
+      presentation: 'Superficial shoulder abrasions, ambulatory, anxious, normal cardiorespiratory parameters',
+      mechanismSummary: 'Evacuation crowd stumble',
+      heartRate: 98,
+      systolicBP: 122,
+      diastolicBP: 76,
+      respiratoryRate: 20,
+      spo2: 99,
+      consciousness: 'Alert',
+      painLevel: 3,
+      bleedingSeverity: 'None',
+      cardiacRhythm: 'Normal Sinus',
+      conditionStatus: 'Stable',
+      sceneChecked: true,
+      examined: false,
+      airwayClear: true,
+      cprActive: false,
+      cprCyclesCompleted: 0,
+      aedPoweredOn: false,
+      padsAttached: false,
+      rhythmAnalyzed: false,
+      shockAdvised: false,
+      shocksDelivered: 0,
+      oxygenApplied: false,
+      bleedingControlled: true,
+      woundDressed: false,
+      monitorVerified: false,
+      assignedTriage: null,
+      referenceTriage: 'MINOR',
+      triageRationale:
+        'Educational Rule: Walking wounded with superficial abrasions and normal vitals classifies as MINOR (Green); conserve scarce O2 and trauma kits.',
+      isSimulated: true,
+    },
+  ];
+}
+
+export const DEMO_SCENARIOS: ScenarioDefinition[] = [
+  {
+    id: 'scen_cardiac_01',
+    code: 'SIM-CA-101',
+    title: 'Adult Witnessed Cardiac Arrest — CPR & AED Protocol',
+    mode: 'cardiac_arrest',
+    difficulty: 'Intermediate',
+    durationLimitSec: 360,
+    patientCount: 1,
+    briefing:
+      'A 58-year-old simulated inpatient in Resuscitation Bay 1 has collapsed suddenly. Perform structured scene check, primary assessment, Code Blue activation, high-quality CPR, safe AED rhythm analysis/defibrillation, and post-ROSC oxygenation.',
+    learningObjectives: [
+      'Confirm bay safety and patient unresponsiveness within 30 seconds',
+      'Activate Code Blue emergency response and initiate chest compressions prior to AED setup',
+      'Attach AED pads, clear the bedside for rhythm analysis, and deliver safe defibrillation',
+      'Establish supplemental oxygen and verify post-ROSC bedside monitor vitals',
+    ],
+    educationalRuleNote:
+      'EDUCATIONAL SIMULATION RULESET (v2.4): Configured by faculty for procedural sequencing and safety training. Not a clinical protocol or real medical guidance.',
+    environmentConfig: {
+      lightingMode: 'Clinical Standard',
+      ambientNoiseLevel: 'Moderate',
+      primaryAedOperational: true,
+      exitClear: true,
+      resources: {
+        oxygenCylinders: 2,
+        hemorrhageKits: 2,
+        woundDressings: 4,
+        aedPadsSets: 2,
+        backupAedAvailable: true,
+      },
+    },
+    disruptionsConfig: {
+      seed: 4092,
+      enabledTypes: ['patient_deterioration'],
+      intensity: 'Controlled',
+    },
+    initialPatients: [createCardiacPatient()],
+    expectedActions: [
+      {
+        stepId: 'ca_step_1',
+        order: 1,
+        actionType: 'check_scene_safety',
+        targetObject: 'Hospital Bed',
+        label: 'Verify Bay Safety & PPE',
+        educationalRule: 'Confirm hazard-free bedside environment within 15s',
+        targetWindowSec: 15,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'ca_step_2',
+        order: 2,
+        actionType: 'check_responsiveness',
+        targetObject: 'Virtual Patient',
+        patientId: 'PT-101',
+        label: 'Assess Responsiveness & Breathing',
+        educationalRule: 'Check AVPU and carotid pulse/breathing within 30s',
+        targetWindowSec: 30,
+        isCritical: true,
+        prerequisites: ['check_scene_safety'],
+      },
+      {
+        stepId: 'ca_step_3',
+        order: 3,
+        actionType: 'call_code_blue',
+        targetObject: 'Emergency Call Panel',
+        label: 'Activate Code Blue Team',
+        educationalRule: 'Summon resuscitation team immediately after arrest recognition',
+        targetWindowSec: 45,
+        isCritical: true,
+        prerequisites: ['check_responsiveness'],
+      },
+      {
+        stepId: 'ca_step_4',
+        order: 4,
+        actionType: 'open_airway',
+        targetObject: 'Virtual Patient',
+        patientId: 'PT-101',
+        label: 'Open & Inspect Airway',
+        educationalRule: 'Perform head-tilt chin-lift airway manoeuvre',
+        targetWindowSec: 55,
+        isCritical: false,
+        prerequisites: ['check_responsiveness'],
+      },
+      {
+        stepId: 'ca_step_5',
+        order: 5,
+        actionType: 'start_cpr',
+        targetObject: 'Virtual Patient',
+        patientId: 'PT-101',
+        label: 'Initiate Chest Compressions (CPR)',
+        educationalRule: 'Begin compressions within 60s of scenario start',
+        targetWindowSec: 60,
+        isCritical: true,
+        prerequisites: ['check_responsiveness'],
+      },
+      {
+        stepId: 'ca_step_6',
+        order: 6,
+        actionType: 'power_on_aed',
+        targetObject: 'AED Device',
+        label: 'Power On AED Unit',
+        educationalRule: 'Activate defibrillator self-test promptly',
+        targetWindowSec: 80,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'ca_step_7',
+        order: 7,
+        actionType: 'attach_aed_pads',
+        targetObject: 'AED Device',
+        patientId: 'PT-101',
+        label: 'Attach Anterior-Lateral AED Pads',
+        educationalRule: 'Place defibrillation pads cleanly on bare chest',
+        targetWindowSec: 95,
+        isCritical: true,
+        prerequisites: ['power_on_aed'],
+      },
+      {
+        stepId: 'ca_step_8',
+        order: 8,
+        actionType: 'analyze_rhythm',
+        targetObject: 'AED Device',
+        patientId: 'PT-101',
+        label: 'Clear Patient & Analyze Rhythm',
+        educationalRule: 'Pause compressions briefly and clear bedside during rhythm analysis',
+        targetWindowSec: 110,
+        isCritical: true,
+        prerequisites: ['attach_aed_pads'],
+      },
+      {
+        stepId: 'ca_step_9',
+        order: 9,
+        actionType: 'deliver_shock',
+        targetObject: 'AED Device',
+        patientId: 'PT-101',
+        label: 'Deliver Safe Biphasic Shock',
+        educationalRule: 'Deliver shock only after rhythm analysis advises shock',
+        targetWindowSec: 130,
+        isCritical: true,
+        prerequisites: ['analyze_rhythm'],
+      },
+      {
+        stepId: 'ca_step_10',
+        order: 10,
+        actionType: 'apply_oxygen',
+        targetObject: 'Oxygen Equipment',
+        patientId: 'PT-101',
+        label: 'Administer High-Flow Oxygen',
+        educationalRule: 'Support post-ROSC oxygenation via BVM / O2 supply',
+        targetWindowSec: 165,
+        isCritical: false,
+        prerequisites: ['deliver_shock'],
+      },
+      {
+        stepId: 'ca_step_11',
+        order: 11,
+        actionType: 'verify_monitor_vitals',
+        targetObject: 'Patient Monitor',
+        patientId: 'PT-101',
+        label: 'Verify Post-ROSC Telemetry',
+        educationalRule: 'Confirm organised rhythm, SpO2, and blood pressure prior to handover',
+        targetWindowSec: 190,
+        isCritical: false,
+        prerequisites: ['deliver_shock'],
+      },
+    ],
+    assessmentWeights: {
+      proceduralAccuracy: 0.3,
+      decisionAccuracy: 0.25,
+      responseTime: 0.2,
+      sequenceAccuracy: 0.25,
+    },
+    assignedTraineeIds: [
+      'usr_trainee_1',
+      'usr_trainee_2',
+      'usr_trainee_3',
+      'usr_trainee_4',
+      'usr_trainee_5',
+    ],
+    archived: false,
+    isDemo: true,
+    createdBy: 'Prof. Evelyn Sterling',
+    updatedAt: '2026-10-12T10:00:00Z',
+  },
+  {
+    id: 'scen_triage_01',
+    code: 'SIM-TR-204',
+    title: 'Multi-Patient Industrial Surge — 4-Bay Emergency Triage',
+    mode: 'multi_patient_triage',
+    difficulty: 'High Acuity',
+    durationLimitSec: 420,
+    patientCount: 4,
+    briefing:
+      'Four casualties from a nearby fabrication plant incident have arrived simultaneously in Trauma Bays 1–4. You have strictly limited portable oxygen (2 cylinders) and arterial hemorrhage kits (2 kits). Examine every casualty, perform life-saving airway/bleeding interventions on critical patients, and assign accurate triage priorities.',
+    learningObjectives: [
+      'Perform primary examination across all 4 casualties before exhausting scarce supplies',
+      'Identify and stabilise severe arterial hemorrhage (PT-201) and compromised airway hypoxia (PT-202)',
+      'Conserve oxygen cylinders and tourniquet kits away from DELAYED and MINOR casualties',
+      'Assign rule-concordant IMMEDIATE, DELAYED, and MINOR triage priorities under time pressure',
+    ],
+    educationalRuleNote:
+      'EDUCATIONAL TRIAGE RULESET (START-Adapted Prototype): Configured strictly for simulation prioritisation practice under resource constraints.',
+    environmentConfig: {
+      lightingMode: 'Clinical Standard',
+      ambientNoiseLevel: 'High Surge',
+      primaryAedOperational: true,
+      exitClear: true,
+      resources: {
+        oxygenCylinders: 2,
+        hemorrhageKits: 2,
+        woundDressings: 3,
+        aedPadsSets: 1,
+        backupAedAvailable: true,
+      },
+    },
+    disruptionsConfig: {
+      seed: 7310,
+      enabledTypes: ['patient_deterioration', 'blocked_exit'],
+      intensity: 'Moderate',
+    },
+    initialPatients: createTriagePatients(),
+    expectedActions: [
+      {
+        stepId: 'tr_exam_PT-201',
+        order: 1,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-201',
+        patientId: 'PT-201',
+        label: 'Examine PT-201 (Elena Rostova)',
+        educationalRule: 'Complete primary survey prior to triage tagging',
+        targetWindowSec: 45,
+        isCritical: true,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_bleed_PT-201',
+        order: 2,
+        actionType: 'control_bleeding',
+        targetObject: 'Emergency Supplies',
+        patientId: 'PT-201',
+        label: 'Control Arterial Bleeding (PT-201)',
+        educationalRule: 'Apply arterial hemorrhage kit to severe lower-limb bleed',
+        targetWindowSec: 75,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_tag_PT-201',
+        order: 3,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-201',
+        patientId: 'PT-201',
+        label: 'Assign IMMEDIATE Triage (PT-201)',
+        educationalRule: 'Tag severe hemorrhagic shock casualty as IMMEDIATE',
+        targetWindowSec: 95,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_exam_PT-202',
+        order: 4,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-202',
+        patientId: 'PT-202',
+        label: 'Examine PT-202 (Marcus Chen)',
+        educationalRule: 'Assess airway and SpO2 on Bay 2 casualty',
+        targetWindowSec: 115,
+        isCritical: true,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_airway_PT-202',
+        order: 5,
+        actionType: 'open_airway',
+        targetObject: 'Patient PT-202',
+        patientId: 'PT-202',
+        label: 'Open Compromised Airway (PT-202)',
+        educationalRule: 'Reposition obstructed airway before oxygen administration',
+        targetWindowSec: 135,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_o2_PT-202',
+        order: 6,
+        actionType: 'apply_oxygen',
+        targetObject: 'Oxygen Equipment',
+        patientId: 'PT-202',
+        label: 'Administer Oxygen to Hypoxic Casualty (PT-202)',
+        educationalRule: 'Allocate scarce O2 cylinder to SpO2 81% patient',
+        targetWindowSec: 155,
+        isCritical: true,
+        prerequisites: ['open_airway'],
+      },
+      {
+        stepId: 'tr_tag_PT-202',
+        order: 7,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-202',
+        patientId: 'PT-202',
+        label: 'Assign IMMEDIATE Triage (PT-202)',
+        educationalRule: 'Tag airway/hypoxic casualty as IMMEDIATE',
+        targetWindowSec: 175,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_exam_PT-203',
+        order: 8,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-203',
+        patientId: 'PT-203',
+        label: 'Examine PT-203 (David Miller)',
+        educationalRule: 'Verify perfusion and fracture status on Bay 3 casualty',
+        targetWindowSec: 210,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_dress_PT-203',
+        order: 9,
+        actionType: 'dress_wound',
+        targetObject: 'Medical Trolley',
+        patientId: 'PT-203',
+        label: 'Apply Sterile Dressing (PT-203)',
+        educationalRule: 'Use standard wound dressing rather than scarce arterial kit',
+        targetWindowSec: 235,
+        isCritical: false,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_tag_PT-203',
+        order: 10,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-203',
+        patientId: 'PT-203',
+        label: 'Assign DELAYED Triage (PT-203)',
+        educationalRule: 'Tag stable non-ambulatory fracture patient as DELAYED',
+        targetWindowSec: 255,
+        isCritical: false,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_exam_PT-204',
+        order: 11,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-204',
+        patientId: 'PT-204',
+        label: 'Examine PT-204 (Sarah Jenkins)',
+        educationalRule: 'Confirm ambulatory status and normal vitals',
+        targetWindowSec: 280,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_tag_PT-204',
+        order: 12,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-204',
+        patientId: 'PT-204',
+        label: 'Assign MINOR Triage (PT-204)',
+        educationalRule: 'Tag ambulatory minor abrasion casualty as MINOR',
+        targetWindowSec: 300,
+        isCritical: false,
+        prerequisites: ['examine_patient'],
+      },
+    ],
+    assessmentWeights: {
+      proceduralAccuracy: 0.25,
+      decisionAccuracy: 0.35,
+      responseTime: 0.2,
+      sequenceAccuracy: 0.2,
+    },
+    assignedTraineeIds: [
+      'usr_trainee_1',
+      'usr_trainee_2',
+      'usr_trainee_3',
+      'usr_trainee_4',
+      'usr_trainee_5',
+    ],
+    archived: false,
+    isDemo: true,
+    createdBy: 'Prof. Evelyn Sterling',
+    updatedAt: '2026-10-15T14:30:00Z',
+  },
+  {
+    id: 'scen_cardiac_02',
+    code: 'SIM-CA-302',
+    title: 'High-Acuity Arrest — AED Fault & Backup Power Disruption',
+    mode: 'cardiac_arrest',
+    difficulty: 'High Acuity',
+    durationLimitSec: 300,
+    patientCount: 1,
+    briefing:
+      'Simulated cardiac arrest complicated by an unexpected primary AED capacitor fault and auxiliary generator lighting shift. Maintain uninterrupted CPR quality while activating backup defibrillation from the Medical Trolley.',
+    learningObjectives: [
+      'Recognise primary AED fault disruption without delaying chest compressions',
+      'Engage backup defibrillator power on Medical Trolley and complete safe shock delivery',
+      'Maintain sequence discipline under compressed time pressure',
+    ],
+    educationalRuleNote:
+      'EDUCATIONAL SIMULATION RULESET (v2.4 — Disruption Variant): Tests equipment failure resilience.',
+    environmentConfig: {
+      lightingMode: 'Night Shift Dim',
+      ambientNoiseLevel: 'High Surge',
+      primaryAedOperational: true,
+      exitClear: true,
+      resources: {
+        oxygenCylinders: 1,
+        hemorrhageKits: 1,
+        woundDressings: 2,
+        aedPadsSets: 2,
+        backupAedAvailable: true,
+      },
+    },
+    disruptionsConfig: {
+      seed: 8821,
+      enabledTypes: ['equipment_unavailable', 'lighting_fluctuation', 'time_pressure'],
+      intensity: 'Severe',
+    },
+    initialPatients: [createCardiacPatient()],
+    expectedActions: [
+      {
+        stepId: 'ca_step_1',
+        order: 1,
+        actionType: 'check_scene_safety',
+        targetObject: 'Hospital Bed',
+        label: 'Verify Bay Safety & PPE',
+        educationalRule: 'Confirm hazard-free bedside environment within 15s',
+        targetWindowSec: 15,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'ca_step_2',
+        order: 2,
+        actionType: 'check_responsiveness',
+        targetObject: 'Virtual Patient',
+        patientId: 'PT-101',
+        label: 'Assess Responsiveness & Breathing',
+        educationalRule: 'Check AVPU and pulse/breathing within 30s',
+        targetWindowSec: 30,
+        isCritical: true,
+        prerequisites: ['check_scene_safety'],
+      },
+      {
+        stepId: 'ca_step_3',
+        order: 3,
+        actionType: 'call_code_blue',
+        targetObject: 'Emergency Call Panel',
+        label: 'Activate Code Blue Team',
+        educationalRule: 'Summon resuscitation team promptly',
+        targetWindowSec: 45,
+        isCritical: true,
+        prerequisites: ['check_responsiveness'],
+      },
+      {
+        stepId: 'ca_step_5',
+        order: 4,
+        actionType: 'start_cpr',
+        targetObject: 'Virtual Patient',
+        patientId: 'PT-101',
+        label: 'Initiate Chest Compressions (CPR)',
+        educationalRule: 'Begin compressions within 60s',
+        targetWindowSec: 60,
+        isCritical: true,
+        prerequisites: ['check_responsiveness'],
+      },
+      {
+        stepId: 'ca_step_6',
+        order: 5,
+        actionType: 'power_on_aed',
+        targetObject: 'AED Device',
+        label: 'Power On AED (After Backup Switch if Faulted)',
+        educationalRule: 'Resolve capacitor fault via Medical Trolley then power AED',
+        targetWindowSec: 95,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'ca_step_7',
+        order: 6,
+        actionType: 'attach_aed_pads',
+        targetObject: 'AED Device',
+        patientId: 'PT-101',
+        label: 'Attach AED Pads',
+        educationalRule: 'Apply pads to bare chest',
+        targetWindowSec: 110,
+        isCritical: true,
+        prerequisites: ['power_on_aed'],
+      },
+      {
+        stepId: 'ca_step_8',
+        order: 7,
+        actionType: 'analyze_rhythm',
+        targetObject: 'AED Device',
+        patientId: 'PT-101',
+        label: 'Analyze Rhythm',
+        educationalRule: 'Clear patient during rhythm analysis',
+        targetWindowSec: 125,
+        isCritical: true,
+        prerequisites: ['attach_aed_pads'],
+      },
+      {
+        stepId: 'ca_step_9',
+        order: 8,
+        actionType: 'deliver_shock',
+        targetObject: 'AED Device',
+        patientId: 'PT-101',
+        label: 'Deliver Safe Shock',
+        educationalRule: 'Deliver shock only after analysis advises shock',
+        targetWindowSec: 140,
+        isCritical: true,
+        prerequisites: ['analyze_rhythm'],
+      },
+      {
+        stepId: 'ca_step_10',
+        order: 9,
+        actionType: 'apply_oxygen',
+        targetObject: 'Oxygen Equipment',
+        patientId: 'PT-101',
+        label: 'Administer High-Flow Oxygen',
+        educationalRule: 'Support post-ROSC oxygenation',
+        targetWindowSec: 170,
+        isCritical: false,
+        prerequisites: ['deliver_shock'],
+      },
+    ],
+    assessmentWeights: {
+      proceduralAccuracy: 0.3,
+      decisionAccuracy: 0.3,
+      responseTime: 0.2,
+      sequenceAccuracy: 0.2,
+    },
+    assignedTraineeIds: ['usr_trainee_1', 'usr_trainee_4'],
+    archived: false,
+    isDemo: true,
+    createdBy: 'Prof. Evelyn Sterling',
+    updatedAt: '2026-10-18T09:15:00Z',
+  },
+  {
+    id: 'scen_triage_02',
+    code: 'SIM-TR-309',
+    title: 'Night-Shift Surge Triage — Additional Casualty & O2 Shortage',
+    mode: 'multi_patient_triage',
+    difficulty: 'High Acuity',
+    durationLimitSec: 420,
+    patientCount: 4,
+    briefing:
+      'Night-shift trauma bay surge with an unscheduled 5th walk-in inhalation casualty arriving mid-scenario and a portable oxygen pressure drop. Rapidly re-prioritise casualties when new arrivals alter resource math.',
+    learningObjectives: [
+      'Adapt triage workflow dynamically when an unannounced 5th casualty enters the bay',
+      'Re-allocate scarce oxygen supplies strictly to severe hypoxia',
+      'Maintain complete primary survey documentation across all casualties',
+    ],
+    educationalRuleNote:
+      'EDUCATIONAL TRIAGE RULESET (Surge Disruption Variant): Evaluates dynamic re-triage under resource scarcity.',
+    environmentConfig: {
+      lightingMode: 'Night Shift Dim',
+      ambientNoiseLevel: 'High Surge',
+      primaryAedOperational: true,
+      exitClear: true,
+      resources: {
+        oxygenCylinders: 3,
+        hemorrhageKits: 2,
+        woundDressings: 3,
+        aedPadsSets: 1,
+        backupAedAvailable: true,
+      },
+    },
+    disruptionsConfig: {
+      seed: 5519,
+      enabledTypes: ['additional_casualty', 'resource_shortage'],
+      intensity: 'Severe',
+    },
+    initialPatients: createTriagePatients(),
+    expectedActions: [
+      {
+        stepId: 'tr_exam_PT-201',
+        order: 1,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-201',
+        patientId: 'PT-201',
+        label: 'Examine PT-201',
+        educationalRule: 'Complete primary survey',
+        targetWindowSec: 45,
+        isCritical: true,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_bleed_PT-201',
+        order: 2,
+        actionType: 'control_bleeding',
+        targetObject: 'Emergency Supplies',
+        patientId: 'PT-201',
+        label: 'Control Arterial Bleeding (PT-201)',
+        educationalRule: 'Apply hemorrhage kit to severe bleed',
+        targetWindowSec: 80,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_tag_PT-201',
+        order: 3,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-201',
+        patientId: 'PT-201',
+        label: 'Tag PT-201 IMMEDIATE',
+        educationalRule: 'Tag severe bleed casualty IMMEDIATE',
+        targetWindowSec: 95,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_exam_PT-202',
+        order: 4,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-202',
+        patientId: 'PT-202',
+        label: 'Examine PT-202',
+        educationalRule: 'Assess airway and SpO2',
+        targetWindowSec: 120,
+        isCritical: true,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_airway_PT-202',
+        order: 5,
+        actionType: 'open_airway',
+        targetObject: 'Patient PT-202',
+        patientId: 'PT-202',
+        label: 'Open Airway (PT-202)',
+        educationalRule: 'Clear positional airway obstruction',
+        targetWindowSec: 140,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_o2_PT-202',
+        order: 6,
+        actionType: 'apply_oxygen',
+        targetObject: 'Oxygen Equipment',
+        patientId: 'PT-202',
+        label: 'Apply Oxygen (PT-202)',
+        educationalRule: 'Treat severe hypoxia',
+        targetWindowSec: 160,
+        isCritical: true,
+        prerequisites: ['open_airway'],
+      },
+      {
+        stepId: 'tr_tag_PT-202',
+        order: 7,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-202',
+        patientId: 'PT-202',
+        label: 'Tag PT-202 IMMEDIATE',
+        educationalRule: 'Tag airway/hypoxia casualty IMMEDIATE',
+        targetWindowSec: 175,
+        isCritical: true,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_exam_PT-203',
+        order: 8,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-203',
+        patientId: 'PT-203',
+        label: 'Examine PT-203',
+        educationalRule: 'Assess fracture casualty',
+        targetWindowSec: 215,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_tag_PT-203',
+        order: 9,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-203',
+        patientId: 'PT-203',
+        label: 'Tag PT-203 DELAYED',
+        educationalRule: 'Tag stable non-ambulatory fracture DELAYED',
+        targetWindowSec: 240,
+        isCritical: false,
+        prerequisites: ['examine_patient'],
+      },
+      {
+        stepId: 'tr_exam_PT-204',
+        order: 10,
+        actionType: 'examine_patient',
+        targetObject: 'Patient PT-204',
+        patientId: 'PT-204',
+        label: 'Examine PT-204',
+        educationalRule: 'Confirm minor status',
+        targetWindowSec: 265,
+        isCritical: false,
+        prerequisites: [],
+      },
+      {
+        stepId: 'tr_tag_PT-204',
+        order: 11,
+        actionType: 'assign_triage',
+        targetObject: 'Patient PT-204',
+        patientId: 'PT-204',
+        label: 'Tag PT-204 MINOR',
+        educationalRule: 'Tag walking wounded MINOR',
+        targetWindowSec: 290,
+        isCritical: false,
+        prerequisites: ['examine_patient'],
+      },
+    ],
+    assessmentWeights: {
+      proceduralAccuracy: 0.25,
+      decisionAccuracy: 0.35,
+      responseTime: 0.2,
+      sequenceAccuracy: 0.2,
+    },
+    assignedTraineeIds: ['usr_trainee_2', 'usr_trainee_5'],
+    archived: false,
+    isDemo: true,
+    createdBy: 'Prof. Evelyn Sterling',
+    updatedAt: '2026-10-20T16:45:00Z',
+  },
+];
+
+function buildDemoCardiacSession(opts: {
+  id: string;
+  traineeId: string;
+  traineeName: string;
+  scenario: ScenarioDefinition;
+  attemptNumber: number;
+  startedAt: string;
+  durationSec: number;
+  profile: 'strong' | 'delayed_cpr' | 'premature_shock' | 'improving';
+}): TrainingSession {
+  const { id, traineeId, traineeName, scenario, attemptNumber, startedAt, durationSec, profile } =
+    opts;
+  const startMs = new Date(startedAt).getTime();
+
+  const rawSteps: Array<{
+    sec: number;
+    actionType: string;
+    label: string;
+    target: string;
+    expected: string;
+    correctness: ActionEventRecord['correctness'];
+    errType: ActionEventRecord['errorType'];
+    errSev: ActionEventRecord['errorSeverity'];
+    msg: string;
+    hr: number;
+    sbp: number;
+    dbp: number;
+    rr: number;
+    spo2: number;
+    cond: PatientState['conditionStatus'];
+  }> = [];
+
+  if (profile === 'strong') {
+    rawSteps.push(
+      { sec: 8, actionType: 'check_scene_safety', label: 'Verify Bay Safety & PPE', target: 'Hospital Bed', expected: 'check_scene_safety', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Resuscitation bay safety & PPE verified.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 75, cond: 'Arrest' },
+      { sec: 18, actionType: 'check_responsiveness', label: 'Assess Responsiveness & Breathing', target: 'Virtual Patient', expected: 'check_responsiveness', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Unresponsive, absent pulse and respiration confirmed.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 73, cond: 'Arrest' },
+      { sec: 27, actionType: 'call_code_blue', label: 'Activate Code Blue Team', target: 'Emergency Call Panel', expected: 'call_code_blue', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Code Blue team summoned.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 71, cond: 'Arrest' },
+      { sec: 36, actionType: 'open_airway', label: 'Open & Inspect Airway', target: 'Virtual Patient', expected: 'open_airway', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Airway positioned via head-tilt chin-lift.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 70, cond: 'Arrest' },
+      { sec: 45, actionType: 'start_cpr', label: 'Initiate Chest Compressions (CPR)', target: 'Virtual Patient', expected: 'start_cpr', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'High-quality chest compressions active (112/min).', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 76, cond: 'Arrest' },
+      { sec: 62, actionType: 'power_on_aed', label: 'Power On AED Unit', target: 'AED Device', expected: 'power_on_aed', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'AED powered on.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 77, cond: 'Arrest' },
+      { sec: 76, actionType: 'attach_aed_pads', label: 'Attach Anterior-Lateral AED Pads', target: 'AED Device', expected: 'attach_aed_pads', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Defibrillation pads adhered firmly.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 78, cond: 'Arrest' },
+      { sec: 90, actionType: 'analyze_rhythm', label: 'Clear Patient & Analyze Rhythm', target: 'AED Device', expected: 'analyze_rhythm', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Coarse VFib identified — Shock Advised.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 77, cond: 'Arrest' },
+      { sec: 102, actionType: 'deliver_shock', label: 'Deliver Safe Biphasic Shock', target: 'AED Device', expected: 'deliver_shock', correctness: 'correct', errType: 'None', errSev: 'None', msg: '200J simulated shock delivered; ROSC achieved.', hr: 108, sbp: 96, dbp: 62, rr: 12, spo2: 88, cond: 'Stabilising' },
+      { sec: 122, actionType: 'apply_oxygen', label: 'Administer High-Flow Oxygen', target: 'Oxygen Equipment', expected: 'apply_oxygen', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Supplemental high-flow O2 connected (15 L/min).', hr: 98, sbp: 110, dbp: 70, rr: 16, spo2: 96, cond: 'Stable' },
+      { sec: 138, actionType: 'verify_monitor_vitals', label: 'Verify Post-ROSC Telemetry', target: 'Patient Monitor', expected: 'verify_monitor_vitals', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Post-ROSC telemetry verified prior to handover.', hr: 94, sbp: 114, dbp: 72, rr: 16, spo2: 97, cond: 'Stable' }
+    );
+  } else if (profile === 'premature_shock') {
+    rawSteps.push(
+      { sec: 19, actionType: 'check_responsiveness', label: 'Assess Responsiveness & Breathing', target: 'Virtual Patient', expected: 'check_scene_safety', correctness: 'out_of_sequence', errType: 'Sequence Violation', errSev: 'Minor', msg: 'Checked responsiveness without verifying scene safety.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 72, cond: 'Arrest' },
+      { sec: 48, actionType: 'power_on_aed', label: 'Power On AED Unit', target: 'AED Device', expected: 'call_code_blue', correctness: 'out_of_sequence', errType: 'Sequence Violation', errSev: 'Moderate', msg: 'Powered AED before calling Code Blue or starting CPR.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 65, cond: 'Arrest' },
+      { sec: 64, actionType: 'deliver_shock', label: 'Attempt Shock Before Pads/Analysis', target: 'AED Device', expected: 'attach_aed_pads', correctness: 'incorrect', errType: 'Premature Shock', errSev: 'Critical', msg: 'CRITICAL SAFETY ERROR: Attempted shock discharge before attaching pads and analyzing rhythm!', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 61, cond: 'Arrest' },
+      { sec: 82, actionType: 'start_cpr', label: 'Initiate Chest Compressions (CPR)', target: 'Virtual Patient', expected: 'start_cpr', correctness: 'delayed', errType: 'Delayed Intervention', errSev: 'Moderate', msg: 'CPR initiated late at 82s (>60s window).', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 68, cond: 'Arrest' },
+      { sec: 105, actionType: 'attach_aed_pads', label: 'Attach Anterior-Lateral AED Pads', target: 'AED Device', expected: 'attach_aed_pads', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Pads attached.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 70, cond: 'Arrest' },
+      { sec: 122, actionType: 'analyze_rhythm', label: 'Clear Patient & Analyze Rhythm', target: 'AED Device', expected: 'analyze_rhythm', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'VFib shock advised.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 69, cond: 'Arrest' },
+      { sec: 141, actionType: 'deliver_shock', label: 'Deliver Safe Biphasic Shock', target: 'AED Device', expected: 'deliver_shock', correctness: 'delayed', errType: 'Delayed Intervention', errSev: 'Moderate', msg: 'Shock delivered at 141s; ROSC achieved.', hr: 112, sbp: 92, dbp: 58, rr: 12, spo2: 85, cond: 'Stabilising' }
+    );
+  } else if (profile === 'delayed_cpr') {
+    rawSteps.push(
+      { sec: 12, actionType: 'check_scene_safety', label: 'Verify Bay Safety & PPE', target: 'Hospital Bed', expected: 'check_scene_safety', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Bay safety checked.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 74, cond: 'Arrest' },
+      { sec: 28, actionType: 'check_responsiveness', label: 'Assess Responsiveness & Breathing', target: 'Virtual Patient', expected: 'check_responsiveness', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Unresponsiveness confirmed.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 70, cond: 'Arrest' },
+      { sec: 52, actionType: 'call_code_blue', label: 'Activate Code Blue Team', target: 'Emergency Call Panel', expected: 'call_code_blue', correctness: 'delayed', errType: 'Delayed Intervention', errSev: 'Moderate', msg: 'Code Blue delayed past 45s target.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 66, cond: 'Arrest' },
+      { sec: 74, actionType: 'start_cpr', label: 'Initiate Chest Compressions (CPR)', target: 'Virtual Patient', expected: 'start_cpr', correctness: 'delayed', errType: 'Delayed Intervention', errSev: 'Moderate', msg: 'CPR compressions delayed past 60s target.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 72, cond: 'Arrest' },
+      { sec: 92, actionType: 'power_on_aed', label: 'Power On AED Unit', target: 'AED Device', expected: 'power_on_aed', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'AED powered on.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 73, cond: 'Arrest' },
+      { sec: 110, actionType: 'attach_aed_pads', label: 'Attach Anterior-Lateral AED Pads', target: 'AED Device', expected: 'attach_aed_pads', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'AED pads placed.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 74, cond: 'Arrest' },
+      { sec: 126, actionType: 'analyze_rhythm', label: 'Clear Patient & Analyze Rhythm', target: 'AED Device', expected: 'analyze_rhythm', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'VFib shock advised.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 73, cond: 'Arrest' },
+      { sec: 139, actionType: 'deliver_shock', label: 'Deliver Safe Biphasic Shock', target: 'AED Device', expected: 'deliver_shock', correctness: 'delayed', errType: 'Delayed Intervention', errSev: 'Moderate', msg: 'Shock delivered; simulated ROSC.', hr: 110, sbp: 95, dbp: 60, rr: 12, spo2: 88, cond: 'Stabilising' },
+      { sec: 162, actionType: 'apply_oxygen', label: 'Administer High-Flow Oxygen', target: 'Oxygen Equipment', expected: 'apply_oxygen', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Supplemental oxygen started.', hr: 98, sbp: 108, dbp: 68, rr: 16, spo2: 95, cond: 'Stable' }
+    );
+  } else {
+    // 'improving'
+    rawSteps.push(
+      { sec: 10, actionType: 'check_scene_safety', label: 'Verify Bay Safety & PPE', target: 'Hospital Bed', expected: 'check_scene_safety', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Bay safety verified.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 75, cond: 'Arrest' },
+      { sec: 22, actionType: 'check_responsiveness', label: 'Assess Responsiveness & Breathing', target: 'Virtual Patient', expected: 'check_responsiveness', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Arrest confirmed.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 72, cond: 'Arrest' },
+      { sec: 34, actionType: 'call_code_blue', label: 'Activate Code Blue Team', target: 'Emergency Call Panel', expected: 'call_code_blue', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Code Blue activated.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 70, cond: 'Arrest' },
+      { sec: 48, actionType: 'start_cpr', label: 'Initiate Chest Compressions (CPR)', target: 'Virtual Patient', expected: 'start_cpr', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'CPR active.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 76, cond: 'Arrest' },
+      { sec: 68, actionType: 'power_on_aed', label: 'Power On AED Unit', target: 'AED Device', expected: 'power_on_aed', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'AED powered.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 77, cond: 'Arrest' },
+      { sec: 84, actionType: 'attach_aed_pads', label: 'Attach Anterior-Lateral AED Pads', target: 'AED Device', expected: 'attach_aed_pads', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Pads attached.', hr: 0, sbp: 68, dbp: 32, rr: 0, spo2: 78, cond: 'Arrest' },
+      { sec: 98, actionType: 'analyze_rhythm', label: 'Clear Patient & Analyze Rhythm', target: 'AED Device', expected: 'analyze_rhythm', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'VFib shock advised.', hr: 0, sbp: 0, dbp: 0, rr: 0, spo2: 77, cond: 'Arrest' },
+      { sec: 112, actionType: 'deliver_shock', label: 'Deliver Safe Biphasic Shock', target: 'AED Device', expected: 'deliver_shock', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Shock delivered; simulated ROSC.', hr: 106, sbp: 98, dbp: 63, rr: 13, spo2: 89, cond: 'Stabilising' },
+      { sec: 136, actionType: 'apply_oxygen', label: 'Administer High-Flow Oxygen', target: 'Oxygen Equipment', expected: 'apply_oxygen', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Oxygen connected.', hr: 95, sbp: 112, dbp: 71, rr: 16, spo2: 96, cond: 'Stable' },
+      { sec: 152, actionType: 'verify_monitor_vitals', label: 'Verify Post-ROSC Telemetry', target: 'Patient Monitor', expected: 'verify_monitor_vitals', correctness: 'correct', errType: 'None', errSev: 'None', msg: 'Monitor verified.', hr: 92, sbp: 115, dbp: 73, rr: 16, spo2: 97, cond: 'Stable' }
+    );
+  }
+
+  let prevSec = 0;
+  const events: ActionEventRecord[] = rawSteps.map((s, idx) => {
+    const resp = s.sec - prevSec;
+    prevSec = s.sec;
+    return {
+      eventId: `${id}_ev_${idx + 1}`,
+      sessionId: id,
+      traineeId,
+      scenarioId: scenario.id,
+      timestamp: new Date(startMs + s.sec * 1000).toISOString(),
+      elapsedSec: s.sec,
+      actionType: s.actionType,
+      actionLabel: s.label,
+      targetObject: s.target,
+      patientId: 'PT-101',
+      expectedAction: s.expected,
+      correctness: s.correctness,
+      responseTimeSec: resp,
+      sequencePosition: idx + 1,
+      errorType: s.errType,
+      errorSeverity: s.errSev,
+      feedbackMessage: s.msg,
+      patientState: {
+        patientId: 'PT-101',
+        heartRate: s.hr,
+        systolicBP: s.sbp,
+        diastolicBP: s.dbp,
+        respiratoryRate: s.rr,
+        spo2: s.spo2,
+        consciousness: s.cond === 'Stable' ? 'Voice' : 'Unresponsive',
+        conditionStatus: s.cond,
+        assignedTriage: 'IMMEDIATE',
+      },
+      scenarioState: {
+        remainingSec: Math.max(0, scenario.durationLimitSec - s.sec),
+        activeDisruptions: s.sec >= 40 ? ['Acute Simulated Decompensation'] : [],
+        resourcesRemaining: {
+          oxygenCylinders: s.actionType === 'apply_oxygen' ? 1 : 2,
+          hemorrhageKits: 2,
+          woundDressings: 4,
+          aedPadsSets: s.sec >= 76 ? 1 : 2,
+          backupAedAvailable: true,
+        },
+      },
+    };
+  });
+
+  const vitalTimeline: VitalTimelinePoint[] = rawSteps.map((s) => ({
+    elapsedSec: s.sec,
+    patientId: 'PT-101',
+    patientName: 'Arthur Vance (Simulated)',
+    heartRate: s.hr,
+    systolicBP: s.sbp,
+    respiratoryRate: s.rr,
+    spo2: s.spo2,
+    conditionStatus: s.cond,
+    eventMarker: s.label,
+  }));
+
+  const last = rawSteps[rawSteps.length - 1];
+  const finalPatient: PatientState = {
+    ...createCardiacPatient(),
+    sceneChecked: rawSteps.some((r) => r.actionType === 'check_scene_safety'),
+    examined: true,
+    airwayClear: rawSteps.some((r) => r.actionType === 'open_airway' || r.actionType === 'apply_oxygen'),
+    cprActive: false,
+    cprCyclesCompleted: 2,
+    aedPoweredOn: true,
+    padsAttached: true,
+    rhythmAnalyzed: true,
+    shocksDelivered: 1,
+    oxygenApplied: rawSteps.some((r) => r.actionType === 'apply_oxygen'),
+    monitorVerified: rawSteps.some((r) => r.actionType === 'verify_monitor_vitals'),
+    heartRate: last.hr,
+    systolicBP: last.sbp,
+    diastolicBP: last.dbp,
+    respiratoryRate: last.rr,
+    spo2: last.spo2,
+    cardiacRhythm: last.cond === 'Stable' ? 'Normal Sinus' : 'Sinus Tachycardia',
+    consciousness: last.cond === 'Stable' ? 'Voice' : 'Unresponsive',
+    conditionStatus: last.cond,
+  };
+
+  const assessment = calculateSessionAssessment(
+    id,
+    scenario,
+    events,
+    [finalPatient],
+    durationSec
+  );
+
+  const sessionObj: TrainingSession = {
+    id,
+    traineeId,
+    traineeName,
+    scenarioId: scenario.id,
+    scenarioCode: scenario.code,
+    scenarioTitle: scenario.title,
+    scenarioMode: scenario.mode,
+    difficulty: scenario.difficulty,
+    attemptNumber,
+    startedAt,
+    completedAt: new Date(startMs + durationSec * 1000).toISOString(),
+    durationSec,
+    status: 'completed',
+    seed: scenario.disruptionsConfig.seed,
+    isDemo: true,
+    events,
+    vitalTimeline,
+    disruptions: [
+      {
+        id: `${id}_disr_1`,
+        type: 'patient_deterioration',
+        triggerAtSec: 38,
+        title: 'Acute Simulated Decompensation',
+        description: 'Accelerated SpO2 desaturation prior to defibrillation.',
+        mitigationHint: 'Maintain CPR and expedite AED rhythm analysis.',
+        triggered: true,
+        resolved: true,
+      },
+    ],
+    finalPatients: [finalPatient],
+    assessment,
+    debrief: null,
+    instructorNotes:
+      profile === 'premature_shock'
+        ? 'DEMO NOTE: Review safe defibrillation clearance checklist before re-attempting High Acuity arrest.'
+        : 'DEMO NOTE: Good command of resuscitation sequence and closed-loop monitor verification.',
+  };
+
+  sessionObj.debrief = generateRuleBasedDebrief(sessionObj, scenario);
+  return sessionObj;
+}
+
+function buildDemoTriageSession(opts: {
+  id: string;
+  traineeId: string;
+  traineeName: string;
+  scenario: ScenarioDefinition;
+  attemptNumber: number;
+  startedAt: string;
+  durationSec: number;
+  hasUnderTriageError: boolean;
+}): TrainingSession {
+  const {
+    id,
+    traineeId,
+    traineeName,
+    scenario,
+    attemptNumber,
+    startedAt,
+    durationSec,
+    hasUnderTriageError,
+  } = opts;
+  const startMs = new Date(startedAt).getTime();
+  const patients = createTriagePatients();
+
+  const events: ActionEventRecord[] = [];
+  const timeline: VitalTimelinePoint[] = [];
+
+  const pushEv = (
+    sec: number,
+    prev: number,
+    actionType: string,
+    label: string,
+    target: string,
+    p: PatientState,
+    correctness: ActionEventRecord['correctness'],
+    errType: ActionEventRecord['errorType'],
+    errSev: ActionEventRecord['errorSeverity'],
+    msg: string
+  ) => {
+    events.push({
+      eventId: `${id}_ev_${events.length + 1}`,
+      sessionId: id,
+      traineeId,
+      scenarioId: scenario.id,
+      timestamp: new Date(startMs + sec * 1000).toISOString(),
+      elapsedSec: sec,
+      actionType,
+      actionLabel: label,
+      targetObject: target,
+      patientId: p.patientId,
+      expectedAction: actionType,
+      correctness,
+      responseTimeSec: sec - prev,
+      sequencePosition: events.length + 1,
+      errorType: errType,
+      errorSeverity: errSev,
+      feedbackMessage: msg,
+      patientState: {
+        patientId: p.patientId,
+        heartRate: p.heartRate,
+        systolicBP: p.systolicBP,
+        diastolicBP: p.diastolicBP,
+        respiratoryRate: p.respiratoryRate,
+        spo2: p.spo2,
+        consciousness: p.consciousness,
+        conditionStatus: p.conditionStatus,
+        assignedTriage: p.assignedTriage,
+      },
+      scenarioState: {
+        remainingSec: Math.max(0, scenario.durationLimitSec - sec),
+        activeDisruptions: sec > 55 ? ['Transfer Corridor Obstruction'] : [],
+        resourcesRemaining: {
+          oxygenCylinders: 1,
+          hemorrhageKits: 1,
+          woundDressings: 2,
+          aedPadsSets: 1,
+          backupAedAvailable: true,
+        },
+      },
+    });
+    timeline.push({
+      elapsedSec: sec,
+      patientId: p.patientId,
+      patientName: p.name,
+      heartRate: p.heartRate,
+      systolicBP: p.systolicBP,
+      respiratoryRate: p.respiratoryRate,
+      spo2: p.spo2,
+      conditionStatus: p.conditionStatus,
+      eventMarker: label,
+    });
+  };
+
+  // PT-201
+  patients[0].examined = true;
+  pushEv(20, 0, 'examine_patient', 'Examine PT-201', 'Patient PT-201', patients[0], 'correct', 'None', 'None', 'Examined PT-201: severe arterial lower-limb hemorrhage.');
+  patients[0].bleedingControlled = true;
+  patients[0].systolicBP = 98;
+  patients[0].heartRate = 112;
+  patients[0].conditionStatus = 'Stabilising';
+  pushEv(42, 20, 'control_bleeding', 'Control Arterial Bleeding (PT-201)', 'Emergency Supplies', patients[0], 'correct', 'None', 'None', 'Arterial tourniquet applied; hemorrhage controlled.');
+  patients[0].assignedTriage = 'IMMEDIATE';
+  pushEv(56, 42, 'assign_triage', 'Assign IMMEDIATE Triage (PT-201)', 'Patient PT-201', patients[0], 'correct', 'None', 'None', 'Correctly tagged PT-201 as IMMEDIATE.');
+
+  // PT-202
+  patients[1].examined = true;
+  pushEv(84, 56, 'examine_patient', 'Examine PT-202', 'Patient PT-202', patients[1], 'correct', 'None', 'None', 'Examined PT-202: airway obstruction, SpO2 81%.');
+  if (hasUnderTriageError) {
+    patients[1].assignedTriage = 'DELAYED';
+    pushEv(
+      110,
+      84,
+      'assign_triage',
+      'Assign DELAYED Triage (PT-202)',
+      'Patient PT-202',
+      patients[1],
+      'incorrect',
+      'Incorrect Triage',
+      'Critical',
+      'CRITICAL UNDER-TRIAGE: Assigned DELAYED to hypoxic airway patient PT-202 (Expected IMMEDIATE).'
+    );
+  } else {
+    patients[1].airwayClear = true;
+    pushEv(102, 84, 'open_airway', 'Open Compromised Airway (PT-202)', 'Patient PT-202', patients[1], 'correct', 'None', 'None', 'Airway repositioned.');
+    patients[1].oxygenApplied = true;
+    patients[1].spo2 = 95;
+    patients[1].conditionStatus = 'Stabilising';
+    pushEv(124, 102, 'apply_oxygen', 'Administer Oxygen (PT-202)', 'Oxygen Equipment', patients[1], 'correct', 'None', 'None', 'Supplemental O2 applied; SpO2 95%.');
+    patients[1].assignedTriage = 'IMMEDIATE';
+    pushEv(140, 124, 'assign_triage', 'Assign IMMEDIATE Triage (PT-202)', 'Patient PT-202', patients[1], 'correct', 'None', 'None', 'Correctly tagged PT-202 as IMMEDIATE.');
+  }
+
+  // PT-203
+  patients[2].examined = true;
+  pushEv(168, 140, 'examine_patient', 'Examine PT-203', 'Patient PT-203', patients[2], 'correct', 'None', 'None', 'Examined PT-203: stable ankle fracture.');
+  patients[2].woundDressed = true;
+  patients[2].bleedingControlled = true;
+  pushEv(190, 168, 'dress_wound', 'Apply Sterile Dressing (PT-203)', 'Medical Trolley', patients[2], 'correct', 'None', 'None', 'Sterile dressing & splint applied.');
+  patients[2].assignedTriage = 'DELAYED';
+  pushEv(208, 190, 'assign_triage', 'Assign DELAYED Triage (PT-203)', 'Patient PT-203', patients[2], 'correct', 'None', 'None', 'Correctly tagged PT-203 as DELAYED.');
+
+  // PT-204
+  patients[3].examined = true;
+  pushEv(230, 208, 'examine_patient', 'Examine PT-204', 'Patient PT-204', patients[3], 'correct', 'None', 'None', 'Examined PT-204: ambulatory, normal vitals.');
+  patients[3].assignedTriage = 'MINOR';
+  pushEv(246, 230, 'assign_triage', 'Assign MINOR Triage (PT-204)', 'Patient PT-204', patients[3], 'correct', 'None', 'None', 'Correctly tagged PT-204 as MINOR.');
+
+  const assessment = calculateSessionAssessment(id, scenario, events, patients, durationSec);
+
+  const sessionObj: TrainingSession = {
+    id,
+    traineeId,
+    traineeName,
+    scenarioId: scenario.id,
+    scenarioCode: scenario.code,
+    scenarioTitle: scenario.title,
+    scenarioMode: scenario.mode,
+    difficulty: scenario.difficulty,
+    attemptNumber,
+    startedAt,
+    completedAt: new Date(startMs + durationSec * 1000).toISOString(),
+    durationSec,
+    status: 'completed',
+    seed: scenario.disruptionsConfig.seed,
+    isDemo: true,
+    events,
+    vitalTimeline: timeline,
+    disruptions: [
+      {
+        id: `${id}_disr_exit`,
+        type: 'blocked_exit',
+        triggerAtSec: 54,
+        title: 'Transfer Corridor Obstruction',
+        description: 'Stretcher congestion blocked primary bay exit.',
+        mitigationHint: 'Reroute via Emergency Call Panel.',
+        triggered: true,
+        resolved: !hasUnderTriageError,
+      },
+    ],
+    finalPatients: patients,
+    assessment,
+    debrief: null,
+    instructorNotes: hasUnderTriageError
+      ? 'DEMO NOTE: Critical under-triage of PT-202 due to unaddressed airway/SpO2 81%. Assigned airway recognition drill.'
+      : 'DEMO NOTE: Excellent resource stewardship and accurate 4-patient triage.',
+  };
+
+  sessionObj.debrief = generateRuleBasedDebrief(sessionObj, scenario);
+  return sessionObj;
+}
+
+export const DEMO_SESSIONS: TrainingSession[] = [
+  buildDemoCardiacSession({
+    id: 'sess_demo_01',
+    traineeId: 'usr_trainee_1',
+    traineeName: 'Dr. Maya Lin',
+    scenario: DEMO_SCENARIOS[0],
+    attemptNumber: 1,
+    startedAt: '2026-10-21T09:15:00Z',
+    durationSec: 175,
+    profile: 'delayed_cpr',
+  }),
+  buildDemoCardiacSession({
+    id: 'sess_demo_02',
+    traineeId: 'usr_trainee_1',
+    traineeName: 'Dr. Maya Lin',
+    scenario: DEMO_SCENARIOS[0],
+    attemptNumber: 2,
+    startedAt: '2026-10-25T10:30:00Z',
+    durationSec: 146,
+    profile: 'strong',
+  }),
+  buildDemoTriageSession({
+    id: 'sess_demo_03',
+    traineeId: 'usr_trainee_1',
+    traineeName: 'Dr. Maya Lin',
+    scenario: DEMO_SCENARIOS[1],
+    attemptNumber: 1,
+    startedAt: '2026-10-28T13:10:00Z',
+    durationSec: 258,
+    hasUnderTriageError: false,
+  }),
+  buildDemoCardiacSession({
+    id: 'sess_demo_04',
+    traineeId: 'usr_trainee_2',
+    traineeName: 'Jordan Vance',
+    scenario: DEMO_SCENARIOS[0],
+    attemptNumber: 1,
+    startedAt: '2026-10-22T11:00:00Z',
+    durationSec: 168,
+    profile: 'premature_shock',
+  }),
+  buildDemoCardiacSession({
+    id: 'sess_demo_05',
+    traineeId: 'usr_trainee_2',
+    traineeName: 'Jordan Vance',
+    scenario: DEMO_SCENARIOS[0],
+    attemptNumber: 2,
+    startedAt: '2026-10-27T15:20:00Z',
+    durationSec: 158,
+    profile: 'improving',
+  }),
+  buildDemoTriageSession({
+    id: 'sess_demo_06',
+    traineeId: 'usr_trainee_2',
+    traineeName: 'Jordan Vance',
+    scenario: DEMO_SCENARIOS[1],
+    attemptNumber: 1,
+    startedAt: '2026-10-30T09:40:00Z',
+    durationSec: 264,
+    hasUnderTriageError: false,
+  }),
+  buildDemoCardiacSession({
+    id: 'sess_demo_07',
+    traineeId: 'usr_trainee_3',
+    traineeName: 'Samira Patel',
+    scenario: DEMO_SCENARIOS[0],
+    attemptNumber: 1,
+    startedAt: '2026-10-24T14:00:00Z',
+    durationSec: 162,
+    profile: 'improving',
+  }),
+  buildDemoTriageSession({
+    id: 'sess_demo_08',
+    traineeId: 'usr_trainee_3',
+    traineeName: 'Samira Patel',
+    scenario: DEMO_SCENARIOS[1],
+    attemptNumber: 1,
+    startedAt: '2026-10-29T16:15:00Z',
+    durationSec: 275,
+    hasUnderTriageError: true,
+  }),
+  buildDemoCardiacSession({
+    id: 'sess_demo_09',
+    traineeId: 'usr_trainee_4',
+    traineeName: "Liam O'Connor",
+    scenario: DEMO_SCENARIOS[2],
+    attemptNumber: 1,
+    startedAt: '2026-10-31T08:50:00Z',
+    durationSec: 182,
+    profile: 'delayed_cpr',
+  }),
+  buildDemoCardiacSession({
+    id: 'sess_demo_10',
+    traineeId: 'usr_trainee_5',
+    traineeName: 'Chloe Takahashi',
+    scenario: DEMO_SCENARIOS[0],
+    attemptNumber: 1,
+    startedAt: '2026-11-01T11:25:00Z',
+    durationSec: 149,
+    profile: 'strong',
+  }),
+];
+
+export const DEMO_INSTRUCTOR_NOTES: InstructorNote[] = [
+  {
+    id: 'note_demo_1',
+    sessionId: 'sess_demo_04',
+    traineeId: 'usr_trainee_2',
+    authorName: 'Prof. Evelyn Sterling',
+    createdAt: '2026-10-22T12:10:00Z',
+    content:
+      'DEMO DATA: Reviewed AED clearance sequence with Jordan after premature discharge attempt on Attempt 1. Subsequent Attempt 2 demonstrated zero critical safety errors.',
+  },
+  {
+    id: 'note_demo_2',
+    sessionId: 'sess_demo_08',
+    traineeId: 'usr_trainee_3',
+    authorName: 'Prof. Evelyn Sterling',
+    createdAt: '2026-10-29T17:05:00Z',
+    content:
+      'DEMO DATA: Samira identified external bleeding rapidly on PT-201, but missed positional airway hypoxia on PT-202. Recommended repeating SIM-TR-204 focusing on respiratory rate + SpO2 survey.',
+  },
+];
+
+export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
+  defaultWeights: {
+    proceduralAccuracy: 0.3,
+    decisionAccuracy: 0.25,
+    responseTime: 0.2,
+    sequenceAccuracy: 0.25,
+  },
+  showDemoDataInAnalytics: true,
+  audioFeedbackEnabled: true,
+  highContrastTelemetry: false,
+  reducedMotion: false,
+  institutionName: 'Metropolitan Center for Acute Simulation & XR Training',
+  vrBridgeEndpointUrl: '/api',
+};
